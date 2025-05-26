@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Character, StylePreferences, ArtStyle, GenerationPhase } from '../types';
 import { CharacterInput } from './CharacterInput';
 import { AVAILABLE_ART_STYLES, MAX_CHARACTERS } from '../constants';
@@ -12,10 +12,12 @@ interface StoryInputFormProps {
   setCharacters: (characters: Character[]) => void;
   stylePreferences: StylePreferences;
   setStylePreferences: (preferences: StylePreferences) => void;
-  onGenerateCharacterDesigns: () => void; // New
-  onGenerateVisualStory: () => void; // Renamed from onSubmit
+  onExtractOrConfirmCharacters: () => void; // New
+  onGenerateAllCharacterDesigns: () => void; // New
+  onGenerateSingleCharacterDesign: (characterId: string) => void; // New
+  onApproveCharacterDesign: (characterId: string) => void; // New
+  onGenerateVisualStory: () => void;
   currentPhase: GenerationPhase;
-  isLoading: boolean; // General loading for story/scene generation
 }
 
 export function StoryInputForm({
@@ -25,95 +27,107 @@ export function StoryInputForm({
   setCharacters,
   stylePreferences,
   setStylePreferences,
-  onGenerateCharacterDesigns,
+  onExtractOrConfirmCharacters,
+  onGenerateAllCharacterDesigns,
+  onGenerateSingleCharacterDesign,
+  onApproveCharacterDesign,
   onGenerateVisualStory,
   currentPhase,
-  isLoading,
 }: StoryInputFormProps): React.ReactNode {
 
+  const [userHasInteractedWithChars, setUserHasInteractedWithChars] = useState(false);
+
   const addCharacter = () => {
+    setUserHasInteractedWithChars(true);
     if (characters.length < MAX_CHARACTERS) {
-      setCharacters([...characters, { id: generateId(), name: '', appearance: '', attire: '', props: '' }]);
+      setCharacters([...characters, { id: generateId(), name: '', appearance: '', attire: '', props: '', isAiExtracted: false }]);
     }
   };
 
   const updateCharacter = (index: number, updatedCharacter: Character) => {
+    setUserHasInteractedWithChars(true);
     const newCharacters = [...characters];
-    newCharacters[index] = updatedCharacter;
+    newCharacters[index] = { ...updatedCharacter, isAiExtracted: false }; // User edit overrides AI extraction flag
     setCharacters(newCharacters);
   };
 
   const removeCharacter = (id: string) => {
+    setUserHasInteractedWithChars(true);
     setCharacters(characters.filter(char => char.id !== id));
   };
 
-  // Specific handlers for CharacterInput to update character designs
-  const handleGenerateCharacterDesign = (charId: string) => {
-    const charIndex = characters.findIndex(c => c.id === charId);
-    if (charIndex === -1 || !characters[charIndex].name.trim()) {
-      alert("Please provide a name for the character before generating a design.");
-      return;
-    }
-    // The actual API call will be managed in App.tsx
-    // Here we just signal App.tsx via a more specific callback if needed,
-    // or App.tsx can manage it by passing down a single function that takes charId.
-    // For simplicity, App.tsx will iterate and call the service.
-    // This callback is for CharacterInput to notify its parent (App.tsx directly or indirectly)
-    // For now, the main "Generate Character Designs" button in this form will trigger all.
-  };
+  const canProceedToCharacterDesign = storyText.trim() !== '' && (
+    currentPhase === GenerationPhase.AWAITING_STORY_INPUT ||
+    currentPhase === GenerationPhase.AWAITING_USER_CHARACTER_CONFIRMATION ||
+    (currentPhase === GenerationPhase.IDLE && storyText.trim() !== '')
+  );
 
-  const handleApproveCharacterDesign = (charId: string) => {
-    setCharacters(prevChars => prevChars.map(c =>
-      c.id === charId ? { ...c, approvedDesignUrl: c.generatedDesignUrl, generatedDesignUrl: undefined, designError: undefined } : c
-    ));
-  };
+  const canGenerateCharacterDesignsGlobally = characters.length > 0 &&
+    characters.some(c => c.name.trim() !== '' && !c.approvedDesignUrl) &&
+    (currentPhase === GenerationPhase.AWAITING_USER_CHARACTER_CONFIRMATION || currentPhase === GenerationPhase.AWAITING_CHARACTER_DESIGN_APPROVAL);
 
-  const handleRegenerateCharacterDesign = (charId: string) => {
-     // App.tsx will handle the regeneration logic.
-     // This function is essentially a signal to re-trigger generation for this char.
-     // The parent (App.tsx) will need to manage this.
-     // We can simplify CharacterInput by just having one "generate/regenerate" button
-     // and App.tsx decides what to do based on character state.
-     // For now, let App.tsx handle this specific character regeneration via its overall character generation logic.
-  };
+  const canGenerateStoryboard = storyText.trim() !== '' &&
+    (characters.length === 0 || characters.filter(c => c.name.trim() !== '').every(c => c.approvedDesignUrl)) &&
+    (currentPhase === GenerationPhase.AWAITING_CHARACTER_DESIGN_APPROVAL || currentPhase === GenerationPhase.COMPLETE || currentPhase === GenerationPhase.IDLE);
 
+  const isLoading = currentPhase !== GenerationPhase.IDLE &&
+                      currentPhase !== GenerationPhase.COMPLETE &&
+                      currentPhase !== GenerationPhase.ERROR &&
+                      currentPhase !== GenerationPhase.AWAITING_STORY_INPUT &&
+                      currentPhase !== GenerationPhase.AWAITING_USER_CHARACTER_CONFIRMATION &&
+                      currentPhase !== GenerationPhase.AWAITING_CHARACTER_DESIGN_APPROVAL;
 
-  const canGenerateCharacterDesigns = characters.length > 0 && characters.some(c => c.name.trim() !== '' && !c.approvedDesignUrl) && !isLoading;
-  const allCharactersDesignedOrSkipped = characters.every(c => c.approvedDesignUrl || !c.name.trim());
-  const canGenerateStoryboard = storyText.trim() !== '' && (characters.length === 0 || allCharactersDesignedOrSkipped) && !isLoading;
+  const isGeneratingAnyCharacterDesigns = currentPhase === GenerationPhase.GENERATING_CHARACTER_DESIGNS || characters.some(c => c.isDesignLoading);
 
 
   return (
-    <div className="bg-slate-800 p-6 rounded-lg shadow-2xl space-y-6">
-      <div>
+    <div className="bg-slate-800 p-6 rounded-xl shadow-2xl space-y-6 sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto">
+      {/* Story Input Section */}
+      <div className="p-4 bg-slate-700/30 rounded-lg">
+        <h3 className="text-xl font-semibold text-purple-300 mb-3">1. Your Narrative</h3>
         <label htmlFor="storyText" className="block text-sm font-medium text-slate-300 mb-1">
-          Your Story
+          Paste your full story here:
         </label>
         <textarea
           id="storyText"
           value={storyText}
           onChange={(e) => setStoryText(e.target.value)}
-          rows={10}
-          className="w-full p-3 bg-slate-700 text-slate-100 border border-slate-600 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-          placeholder="Paste your story here. The AI will break it into scenes."
-          disabled={isLoading || currentPhase === GenerationPhase.GENERATING_CHARACTER_DESIGNS || currentPhase === GenerationPhase.AWAITING_CHARACTER_APPROVAL}
+          rows={8}
+          className="w-full p-3 bg-slate-600 text-slate-100 border border-slate-500 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors shadow-sm"
+          placeholder="The adventure begins..."
+          disabled={isLoading}
         />
       </div>
 
-      <div>
-        <h3 className="text-lg font-semibold text-slate-200 mb-2">Character Definitions</h3>
-        <p className="text-xs text-slate-400 mb-3">Define up to {MAX_CHARACTERS} key characters. Generate and approve their designs before creating the storyboard.</p>
+      {/* Character Definition / Extraction Section */}
+      <div className="p-4 bg-slate-700/30 rounded-lg">
+        <h3 className="text-xl font-semibold text-purple-300 mb-3">2. Define or Discover Characters</h3>
+        {!userHasInteractedWithChars && characters.length === 0 && (
+          <button
+            type="button"
+            onClick={onExtractOrConfirmCharacters}
+            disabled={!storyText.trim() || isLoading || currentPhase === GenerationPhase.EXTRACTING_CHARACTERS}
+            className="w-full mb-3 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md shadow-md disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {currentPhase === GenerationPhase.EXTRACTING_CHARACTERS ? 'Analyzing Story for Characters...' : 'Let AI Suggest Characters from Story'}
+          </button>
+        )}
+        <p className="text-xs text-slate-400 mb-3">
+            {userHasInteractedWithChars || characters.length > 0 ? "Manually define or edit characters below." : "Alternatively, add characters manually."}
+            You can define up to {MAX_CHARACTERS}.
+        </p>
+
         {characters.map((char, index) => (
           <CharacterInput
             key={char.id}
             character={char}
-            onChange={(updatedChar) => updateCharacter(index, updatedChar)}
-            onRemove={() => removeCharacter(char.id)}
-            // Pass down functions for App.tsx to handle API calls
-            onGenerateDesign={() => { /* App.tsx will handle this specific call via a new button or iterate */}}
-            onApproveDesign={() => handleApproveCharacterDesign(char.id)}
-            onRegenerateDesign={() => { /* App.tsx will handle this specific call */}}
-            isGeneratingStory={isLoading && (currentPhase === GenerationPhase.DECONSTRUCTING_STORY || currentPhase === GenerationPhase.GENERATING_SCENE_IMAGES)}
+            index={index}
+            onChange={updateCharacter}
+            onRemove={removeCharacter}
+            onGenerateSingleCharacterDesign={onGenerateSingleCharacterDesign}
+            onApproveDesign={onApproveCharacterDesign}
+            currentPhase={currentPhase}
+            isGeneratingAnyCharacterDesigns={isGeneratingAnyCharacterDesigns}
           />
         ))}
         {characters.length < MAX_CHARACTERS && (
@@ -121,37 +135,55 @@ export function StoryInputForm({
             type="button"
             onClick={addCharacter}
             disabled={isLoading}
-            className="mt-2 w-full flex items-center justify-center px-4 py-2 border border-dashed border-slate-600 text-sm font-medium rounded-md text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-50"
+            className="mt-2 w-full flex items-center justify-center px-4 py-2 border border-dashed border-slate-500 text-sm font-medium rounded-md text-slate-300 hover:text-purple-300 hover:border-purple-400 transition-colors disabled:opacity-60"
           >
             <PlusIcon className="h-5 w-5 mr-2" />
-            Add Character
+            Add Character Manually
           </button>
         )}
+        {characters.length > 0 && currentPhase === GenerationPhase.AWAITING_USER_CHARACTER_CONFIRMATION && !userHasInteractedWithChars && (
+             <button
+                type="button"
+                onClick={onExtractOrConfirmCharacters} // This effectively becomes "Confirm AI Characters"
+                disabled={isLoading}
+                className="mt-3 w-full px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md shadow-md disabled:opacity-60"
+            >
+                Confirm AI Suggested Characters (or Edit Above)
+            </button>
+        )}
       </div>
-       {characters.length > 0 && (
-        <button
-            type="button"
-            onClick={onGenerateCharacterDesigns}
-            disabled={!canGenerateCharacterDesigns || isLoading || currentPhase === GenerationPhase.GENERATING_CHARACTER_DESIGNS}
-            className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 ease-in-out"
-        >
-            {currentPhase === GenerationPhase.GENERATING_CHARACTER_DESIGNS ? 'Generating Designs...' : 'Generate Character Designs'}
-        </button>
-       )}
 
 
-      <div>
-        <h3 className="text-lg font-semibold text-slate-200 mb-2">Style Preferences</h3>
-        <div className="space-y-3">
+      {/* Character Design Generation Button */}
+      {(currentPhase === GenerationPhase.AWAITING_USER_CHARACTER_CONFIRMATION || currentPhase === GenerationPhase.AWAITING_CHARACTER_DESIGN_APPROVAL) && characters.some(c => c.name.trim() !== '') && (
+        <div className="p-4 bg-slate-700/30 rounded-lg">
+            <h3 className="text-xl font-semibold text-purple-300 mb-3">3. Generate Character Visuals</h3>
+            <button
+                type="button"
+                onClick={onGenerateAllCharacterDesigns}
+                disabled={!canGenerateCharacterDesignsGlobally || isLoading || isGeneratingAnyCharacterDesigns}
+                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+                {isGeneratingAnyCharacterDesigns ? 'Generating Designs...' : `Generate All Pending Design Sheets (${characters.filter(c=>c.name.trim() && !c.approvedDesignUrl && !c.isDesignLoading).length})`}
+            </button>
+            <p className="text-xs text-slate-400 mt-2">Click above to generate multi-view design sheets for all defined characters, or generate individually within each character card.</p>
+        </div>
+      )}
+
+
+      {/* Style Preferences Section */}
+      <div className="p-4 bg-slate-700/30 rounded-lg">
+        <h3 className="text-xl font-semibold text-purple-300 mb-3">
+            {currentPhase === GenerationPhase.AWAITING_CHARACTER_DESIGN_APPROVAL && characters.length > 0 ? '4. Visual Style' : '3. Visual Style'}
+        </h3>
+        <div className="space-y-4">
           <div>
-            <label htmlFor="artStyle" className="block text-sm font-medium text-slate-300 mb-1">
-              Art Style
-            </label>
+            <label htmlFor="artStyle" className="block text-sm font-medium text-slate-300 mb-1">Art Style</label>
             <select
               id="artStyle"
               value={stylePreferences.artStyle}
               onChange={(e) => setStylePreferences({ ...stylePreferences, artStyle: e.target.value as ArtStyle })}
-              className="w-full p-3 bg-slate-700 text-slate-100 border border-slate-600 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              className="w-full p-3 bg-slate-600 text-slate-100 border border-slate-500 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-sm"
               disabled={isLoading}
             >
               {AVAILABLE_ART_STYLES.map(style => (
@@ -160,49 +192,55 @@ export function StoryInputForm({
             </select>
           </div>
           <div>
-            <label htmlFor="moodKeywords" className="block text-sm font-medium text-slate-300 mb-1">
-              Mood/Atmosphere Keywords
-            </label>
+            <label htmlFor="moodKeywords" className="block text-sm font-medium text-slate-300 mb-1">Mood/Atmosphere Keywords</label>
             <input
               type="text"
               id="moodKeywords"
               value={stylePreferences.moodKeywords}
               onChange={(e) => setStylePreferences({ ...stylePreferences, moodKeywords: e.target.value })}
-              className="w-full p-3 bg-slate-700 text-slate-100 border border-slate-600 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-              placeholder="e.g., mysterious, uplifting, ominous"
+              className="w-full p-3 bg-slate-600 text-slate-100 border border-slate-500 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-sm"
+              placeholder="e.g., mysterious, vibrant, dark"
               disabled={isLoading}
             />
           </div>
           <div>
-            <label htmlFor="referenceArtists" className="block text-sm font-medium text-slate-300 mb-1">
-              Reference Artists (Optional)
-            </label>
+            <label htmlFor="referenceArtists" className="block text-sm font-medium text-slate-300 mb-1">Reference Artists (Optional)</label>
             <input
               type="text"
               id="referenceArtists"
               value={stylePreferences.referenceArtists}
               onChange={(e) => setStylePreferences({ ...stylePreferences, referenceArtists: e.target.value })}
-              className="w-full p-3 bg-slate-700 text-slate-100 border border-slate-600 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-              placeholder="e.g., Studio Ghibli, Van Gogh"
+              className="w-full p-3 bg-slate-600 text-slate-100 border border-slate-500 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-sm"
+              placeholder="e.g., Studio Ghibli, Artgerm"
               disabled={isLoading}
             />
           </div>
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onGenerateVisualStory}
-        disabled={!canGenerateStoryboard || isLoading || currentPhase === GenerationPhase.GENERATING_CHARACTER_DESIGNS}
-        className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-md shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-opacity-50"
-      >
-        {isLoading && (currentPhase === GenerationPhase.DECONSTRUCTING_STORY || currentPhase === GenerationPhase.GENERATING_SCENE_IMAGES) ? 'Generating Storyboard...' : 'Generate Visual Storyboard'}
-      </button>
+      {/* Generate Storyboard Button */}
+       <div className="p-4 bg-slate-700/30 rounded-lg mt-6">
+         <h3 className="text-xl font-semibold text-purple-300 mb-3">
+            {currentPhase === GenerationPhase.AWAITING_CHARACTER_DESIGN_APPROVAL && characters.length > 0 ? '5. Create Storyboard' : '4. Create Storyboard'}
+         </h3>
+        <button
+            type="button"
+            onClick={onGenerateVisualStory}
+            disabled={!canGenerateStoryboard || isLoading}
+            className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white text-lg font-bold rounded-lg shadow-xl disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-75"
+        >
+            {isLoading && (currentPhase === GenerationPhase.DECONSTRUCTING_STORY || currentPhase === GenerationPhase.GENERATING_SCENE_IMAGES) ? 'Creating Storyboard...' : 'Generate Full Visual Storyboard'}
+        </button>
+        <p className="text-xs text-slate-400 mt-2">
+            Ensure all desired character designs are approved before generating the storyboard.
+            If no characters are defined, the AI will illustrate scenes based on textual descriptions only.
+        </p>
+      </div>
     </div>
   );
 }
 
-function PlusIcon(props: React.SVGProps<SVGSVGElement>): React.ReactNode {
+function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />

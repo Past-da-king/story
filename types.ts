@@ -4,12 +4,27 @@ export interface Character {
   appearance: string; // Physical appearance (hair, eyes, build, notable features)
   attire: string;     // Core attire/costume
   props: string;      // Key props or accessories
-  // New fields for character design workflow
-  generatedDesignUrl?: string; // URL of the AI-generated character sheet
+
+  // Fields for character design workflow
+  isAiExtracted?: boolean;       // Flag if this character's textual description was AI-extracted
+  generatedDesignUrl?: string; // URL of the AI-generated multi-view character sheet
   approvedDesignUrl?: string;  // URL of the user-approved character sheet
   isDesignLoading?: boolean;
   designError?: string;
 }
+
+// For AI-extracted character textual descriptions
+export interface AiExtractedCharacterInfo {
+  name: string;
+  appearance: string;
+  attire: string;
+  props: string;
+}
+
+export interface AiCharacterExtractionResponse {
+    characters: AiExtractedCharacterInfo[];
+}
+
 
 export enum ArtStyle {
   PHOTOREALISTIC = "Photorealistic",
@@ -37,7 +52,7 @@ export interface Scene {
   settingDescription: string;
   actionDescription: string;
   emotionalBeat: string;
-  imagePrompt: string; // This will be the textual prompt for the scene
+  imagePrompt: string; // Textual prompt for the scene
   imageUrl?: string;
   imageError?: string;
 }
@@ -46,7 +61,6 @@ export interface DeconstructedStory {
   scenes: Scene[];
 }
 
-// For parsing Gemini's structured response for story deconstruction
 export interface GeminiSceneResponse {
   sceneSummary: string;
   charactersInScene: string[];
@@ -60,7 +74,6 @@ export interface GeminiDeconstructedStoryResponse {
   scenes: GeminiSceneResponse[];
 }
 
-// Helper type for reference images passed to the image generation model
 export interface ReferenceImagePart {
   inlineData: {
     mimeType: string;
@@ -68,12 +81,13 @@ export interface ReferenceImagePart {
   };
 }
 
-// New enum to track the current phase of generation
 export enum GenerationPhase {
   IDLE,
-  AWAITING_CHARACTER_INPUT,
+  AWAITING_STORY_INPUT, // Initial state
+  EXTRACTING_CHARACTERS,   // AI extracting character text if user didn't provide
+  AWAITING_USER_CHARACTER_CONFIRMATION, // User reviews/edits AI extracted character text
   GENERATING_CHARACTER_DESIGNS,
-  AWAITING_CHARACTER_APPROVAL,
+  AWAITING_CHARACTER_DESIGN_APPROVAL,
   DECONSTRUCTING_STORY,
   GENERATING_SCENE_IMAGES,
   COMPLETE,
