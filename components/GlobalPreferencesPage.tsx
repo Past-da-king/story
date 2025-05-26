@@ -1,8 +1,3 @@
-
-
-## components/GlobalPreferencesPage.tsx
-
-```typescript
 import React from 'react';
 // Corrected imports: Types from 'types.ts', Constants from 'constants.ts'
 import { StylePreferences, ArtStyle, ColorPalette } from '../types';
@@ -114,4 +109,3 @@ export function GlobalPreferencesPage({ preferences, setPreferences, onContinue,
     </div>
   );
 }
-```

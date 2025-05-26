@@ -1,35 +1,54 @@
+// Existing types might need slight adjustments, new ones are added
+
 export interface Character {
   id: string;
+  // Fields from mockup 2.png
+  description: string;
   name: string;
-  appearance: string; // Physical appearance (hair, eyes, build, notable features)
-  attire: string;     // Core attire/costume
-  props: string;      // Key props or accessories
+  gender: string;
+  age: string; // e.g., "25", "Ancient", "Ageless"
+  hairColor: string;
+  eyeColor: string;
+  build: string; // e.g., "Athletic", "Slender", "Imposing"
+  personalityTraits: string;
+  clothingStyle: string;
+  distinguishingFeatures: string;
+  habitsMannerisms: string;
 
   // Fields for character design workflow
   isAiExtracted?: boolean;       // Flag if this character's textual description was AI-extracted
-  generatedDesignUrl?: string; // URL of the AI-generated multi-view character sheet
-  approvedDesignUrl?: string;  // URL of the user-approved character sheet
+  generatedDesignImageUrl?: string; // URL of the AI-generated multi-view character sheet
+  approvedDesignImageUrl?: string;  // URL of the user-approved character sheet
   isDesignLoading?: boolean;
   designError?: string;
 }
 
-// For AI-extracted character textual descriptions
 export interface AiExtractedCharacterInfo {
+  // Matches the fields in Character for AI extraction
   name: string;
-  appearance: string;
-  attire: string;
-  props: string;
+  description: string;
+  gender: string;
+  age: string;
+  hairColor: string;
+  eyeColor: string;
+  build: string;
+  personalityTraits: string;
+  clothingStyle: string;
+  distinguishingFeatures: string;
+  habitsMannerisms: string;
 }
 
 export interface AiCharacterExtractionResponse {
     characters: AiExtractedCharacterInfo[];
 }
 
-
 export enum ArtStyle {
-  PHOTOREALISTIC = "Photorealistic",
+  REALISTIC = "Realistic",
+  CARTOON = "Cartoon",
   ANIME = "Anime",
-  CARTOONISH = "Cartoonish",
+  ABSTRACT = "Abstract",
+  // Adding previous styles for broader options, can be curated
+  PHOTOREALISTIC = "Photorealistic",
   DARK_FANTASY = "Dark Fantasy",
   IMPRESSIONISTIC = "Impressionistic",
   PIXEL_ART = "Pixel Art",
@@ -39,26 +58,35 @@ export enum ArtStyle {
   COMIC_BOOK = "Comic Book",
 }
 
-export interface StylePreferences {
+export enum ColorPalette {
+  VIBRANT = "Vibrant",
+  PASTEL = "Pastel",
+  MONOCHROME = "Monochrome",
+  EARTHY = "Earthy",
+}
+
+export interface StylePreferences { // Corresponds to Global Preferences mockup
   artStyle: ArtStyle;
-  moodKeywords: string; // e.g., "mysterious, uplifting, ominous, serene"
-  referenceArtists: string; // e.g., "Studio Ghibli, Frank Frazetta"
+  colorPalette: ColorPalette;
+  // Optional: Default Character Appearance (Gender, Age Range)
+  // Optional: Default Scene Settings (Lighting, Mood)
+  // For simplicity, sticking to artStyle and colorPalette from the main sections of mockup 3
+  // Mood keywords and reference artists can be part of a more advanced per-story or global setting.
+  // The current app structure had moodKeywords and referenceArtists, let's keep them for flexibility.
+  moodKeywords: string;
+  referenceArtists: string;
 }
 
 export interface Scene {
   id: string;
   sceneSummary: string;
-  charactersInScene: string[];
+  charactersInScene: string[]; // Names of characters
   settingDescription: string;
   actionDescription: string;
   emotionalBeat: string;
   imagePrompt: string; // Textual prompt for the scene
   imageUrl?: string;
   imageError?: string;
-}
-
-export interface DeconstructedStory {
-  scenes: Scene[];
 }
 
 export interface GeminiSceneResponse {
@@ -81,15 +109,19 @@ export interface ReferenceImagePart {
   };
 }
 
-export enum GenerationPhase {
+// Represents the current view/page in the multi-step creation process
+export type AppView =
+  | 'welcome'
+  | 'storyInput'
+  | 'characterDefinition'
+  | 'globalPreferences'
+  | 'characterDesignReview'
+  | 'storyboardDisplay';
+
+// More granular state for loading and operations
+export enum OperationStatus {
   IDLE,
-  AWAITING_STORY_INPUT, // Initial state
-  EXTRACTING_CHARACTERS,   // AI extracting character text if user didn't provide
-  AWAITING_USER_CHARACTER_CONFIRMATION, // User reviews/edits AI extracted character text
-  GENERATING_CHARACTER_DESIGNS,
-  AWAITING_CHARACTER_DESIGN_APPROVAL,
-  DECONSTRUCTING_STORY,
-  GENERATING_SCENE_IMAGES,
-  COMPLETE,
+  LOADING,
+  SUCCESS,
   ERROR
 }
